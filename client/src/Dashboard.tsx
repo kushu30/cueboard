@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { Table, Title, Container, Button, Group, TextInput, Alert, List, Badge } from '@mantine/core';
 import { IconAlertTriangle, IconCircleCheck, IconArrowsSort } from '@tabler/icons-react';
 import api from './api';
-import type { Client } from './types';
+import type { Client, ClientPriority } from './types';
 import { MeetingPrep } from './MeetingPrep';
 
 interface Reminder {
-  id: number; rule: string; client_name: string; client_id: number;
+  id: number; rule: string; client_name: string; client_id: number; priority: ClientPriority;
 }
+
 interface DashboardProps {
   clients: Client[];
   onClientSelect: (client: Client) => void;
@@ -15,6 +16,11 @@ interface DashboardProps {
   handleLogout: () => void;
   onUpdateClientInList: (client: Client) => void;
 }
+
+const PriorityBadge = ({ priority }: { priority: ClientPriority }) => {
+    const color = { high: 'red', medium: 'orange', low: 'gray' }[priority];
+    return <Badge color={color} variant="light">{priority}</Badge>;
+};
 
 export function Dashboard({ clients, onClientSelect, openAddClientModal, handleLogout, onUpdateClientInList }: DashboardProps) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -79,6 +85,7 @@ export function Dashboard({ clients, onClientSelect, openAddClientModal, handleL
               <List.Item key={r.id}>
                 <Group justify="space-between">
                   <span>
+                    <PriorityBadge priority={r.priority} />
                     <a href="#" onClick={(e) => { e.preventDefault(); const c = clients.find(cl => cl.id === r.client_id); if (c) onClientSelect(c); }}>
                       {r.client_name}
                     </a> - {r.rule}

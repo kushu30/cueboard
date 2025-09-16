@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Modal, TextInput, Stack, Button, NumberInput } from '@mantine/core';
+import { Modal, TextInput, Stack, Button, NumberInput, Select } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useForm } from '@mantine/form';
 import api from './api';
 import { ClientDetail } from './ClientDetail';
 import { Auth } from './Auth';
 import { Dashboard } from './Dashboard';
-import type { Client } from './types';
+import type { Client, ClientPriority } from './types';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
@@ -22,6 +22,7 @@ function App() {
       owner: '',
       website_url: '',
       contact_cadence_days: 7,
+      priority: 'medium' as ClientPriority,
     },
     validate: {
       name: (value) => (value.trim().length < 2 ? 'Name is required' : null),
@@ -82,6 +83,11 @@ function App() {
             <TextInput label="Owner" {...form.getInputProps('owner')} />
             <TextInput label="Website URL" placeholder="https://example.com" {...form.getInputProps('website_url')} />
             <NumberInput label="Contact Cadence (Days)" placeholder="7" min={1} {...form.getInputProps('contact_cadence_days')} />
+            <Select
+              label="Priority"
+              data={[{ value: 'high', label: 'High' }, { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' }]}
+              {...form.getInputProps('priority')}
+            />
             <Button type="submit" mt="md">Create Client</Button>
           </Stack>
         </form>

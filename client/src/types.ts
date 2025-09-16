@@ -5,6 +5,8 @@ export interface Client {
   contact_email: string;
   owner: string;
   tags: string;
+  status: 'active' | 'paused' | 'churned';
+  priority: ClientPriority;
   last_contact_date?: string;
   website_url?: string;
   contact_cadence_days: number;
@@ -18,3 +20,5 @@ export interface Interaction {
   date: string;
   user_email: string;
 }
+
+export type ClientPriority = 'high' | 'medium' | 'low';

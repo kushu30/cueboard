@@ -3,7 +3,7 @@ import { Container, Title, Text, Button, Card, Stack, Textarea, Select, Group, P
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import api from './api';
-import type { Client, Interaction } from './types';
+import type { Client, Interaction, ClientPriority } from './types';
 
 const PREMADE_TAGS = ['premium', 'at-risk', 'new-lead', 'renewal-due', 'needs-onboarding'];
 
@@ -86,6 +86,11 @@ export function ClientDetail({ client, onBack, onClientUpdate, onClientDelete }:
             <TextInput label="Owner" {...editForm.getInputProps('owner')} />
             <TextInput label="Website URL" placeholder="https://example.com" {...editForm.getInputProps('website_url')} />
             <NumberInput label="Contact Cadence (Days)" placeholder="7" min={1} {...editForm.getInputProps('contact_cadence_days')} />
+            <Select
+              label="Priority"
+              data={[{ value: 'high', label: 'High' }, { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' }]}
+              {...editForm.getInputProps('priority')}
+            />
             <MultiSelect
               label="Tags"
               placeholder="Select tags"

@@ -28,7 +28,9 @@ app.get('/api/reminders', async (req, res) => {
       .join('clients', 'reminders.client_id', 'clients.id')
       .where('clients.team_id', team_id)
       .andWhere('reminders.status', 'pending')
-      .select('reminders.id', 'reminders.rule', 'clients.name as client_name', 'clients.id as client_id');
+      .select('reminders.id', 'reminders.rule', 'clients.name as client_name', 'clients.id as client_id', 'clients.priority')
+      .orderByRaw("CASE clients.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END");
+      
     res.json(reminders);
   } catch (error) {
     console.error('Error fetching reminders:', error);
@@ -36,12 +38,10 @@ app.get('/api/reminders', async (req, res) => {
   }
 });
 
-// GET /clients - Fetch all clients for the logged-in user's team
 app.get('/clients', async (req, res) => {
   try {
     const { team_id } = req.user;
     
-    // Create a subquery to find the latest interaction date for each client
     const lastContactSubquery = db('interactions')
       .select('client_id')
       .max('date as last_contact_date')
@@ -60,11 +60,11 @@ app.get('/clients', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch clients' });
   }
 });
-// GET /api/agenda - Get user's agenda items for today
+
 app.get('/api/agenda', async (req, res) => {
   try {
     const { id: user_id } = req.user;
-    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const today = new Date().toISOString().slice(0, 10);
     const agendaItems = await db('agendas')
       .join('clients', 'agendas.client_id', 'clients.id')
       .where('agendas.user_id', user_id)
@@ -77,12 +77,10 @@ app.get('/api/agenda', async (req, res) => {
   }
 });
 
-// POST /api/agenda - Add a client to the agenda
 app.post('/api/agenda', async (req, res) => {
   try {
     const { id: user_id } = req.user;
     const { client_id } = req.body;
-    // Prevent duplicates
     const today = new Date().toISOString().slice(0, 10);
     const existing = await db('agendas').where({ user_id, client_id, agenda_date: today }).first();
     if (existing) {
@@ -95,7 +93,6 @@ app.post('/api/agenda', async (req, res) => {
   }
 });
 
-// PUT /api/agenda/:id - Update discussion points or status
 app.put('/api/agenda/:id', async (req, res) => {
   try {
     const { id: user_id } = req.user;
@@ -112,7 +109,6 @@ app.put('/api/agenda/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/agenda/:id - Remove item from agenda
 app.delete('/api/agenda/:id', async (req, res) => {
   try {
     const { id: user_id } = req.user;
@@ -124,15 +120,16 @@ app.delete('/api/agenda/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to remove from agenda' });
   }
 });
+
 app.post('/clients', async (req, res) => {
   try {
     const { team_id } = req.user;
-    const { name, contact_email, company, owner } = req.body;
+    const { name, contact_email, company, owner, website_url, contact_cadence_days, priority } = req.body;
     if (!name || !contact_email) {
       return res.status(400).json({ error: 'Name and contact_email are required' });
     }
     const [newClient] = await db('clients')
-        .insert({ name, contact_email, company, owner, team_id })
+        .insert({ name, contact_email, company, owner, team_id, website_url, contact_cadence_days, priority, prep_notes: '' })
         .returning('*');
     res.status(201).json(newClient);
   } catch (error) {
@@ -146,7 +143,6 @@ app.put('/api/reminders/:id', async (req, res) => {
     const { id: reminderId } = req.params;
     const { status } = req.body;
 
-    // A security check to ensure the reminder being updated belongs to a client on the user's team.
     const reminder = await db('reminders')
       .join('clients', 'reminders.client_id', 'clients.id')
       .where('reminders.id', reminderId)
@@ -170,8 +166,8 @@ app.put('/clients/:id', async (req, res) => {
     try {
         const { team_id } = req.user;
         const { id } = req.params;
-        const { name, company, contact_email, owner, tags, health_score, website_url, contact_cadence_days, prep_notes } = req.body;
-        const updateData = { name, company, contact_email, owner, tags, health_score, website_url, contact_cadence_days, prep_notes };
+        const { name, company, contact_email, owner, tags, website_url, contact_cadence_days, prep_notes, priority } = req.body;
+        const updateData = { name, company, contact_email, owner, tags, website_url, contact_cadence_days, prep_notes, priority };
 
         const [updatedClient] = await db('clients')
             .where({ id: id, team_id: team_id })
@@ -187,14 +183,12 @@ app.put('/clients/:id', async (req, res) => {
     }
 });
 
-
-// DELETE /clients/:id - Delete a client by ID
 app.delete('/clients/:id', async (req, res) => {
     try {
         const { team_id } = req.user;
         const { id } = req.params;
 
-        const count = await db('clients').where({ id: id, team_id: team_id }).del(); // Security check
+        const count = await db('clients').where({ id: id, team_id: team_id }).del();
         
         if (count === 0) {
             return res.status(404).json({ error: 'Client not found or access denied.' });
