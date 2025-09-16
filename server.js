@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import db from './db/index.js';
 import authRouter from './auth.js';
 import authMiddleware from './middleware/auth.js';
@@ -10,7 +12,7 @@ import { generateReminders } from './reminders.js';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors({ origin: process.env.BASE_URL }));
+app.use(cors());
 app.use(express.json());
 
 app.use('/api/auth', authRouter);
@@ -249,6 +251,15 @@ app.post('/clients/:id/interactions', async (req, res) => {
         console.error("Error creating interaction:", error);
         res.status(500).json({ error: 'Failed to create interaction' });
     }
+});
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+app.use(express.static(path.join(__dirname, 'client/dist')));
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'client/dist', 'index.html'));
 });
 
 app.listen(PORT, () => {

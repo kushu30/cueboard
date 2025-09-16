@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Container, Title, Text, Button, Card, Stack, Textarea, Select, Group, Paper, Badge, Modal, TextInput, NumberInput, Anchor, MultiSelect } from '@mantine/core';
+import { Container, Title, Text, Button, Card, Stack, Textarea, Select, Group, Paper, Badge, Modal, TextInput, NumberInput, Anchor, MultiSelect, Timeline } from '@mantine/core';
+import { IconMail, IconPhone, IconUsers, IconMessageCircle } from '@tabler/icons-react';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import api from './api';
@@ -13,6 +14,13 @@ interface ClientDetailProps {
   onClientUpdate: (client: Client) => void;
   onClientDelete: (clientId: number) => void;
 }
+
+const interactionIcons = {
+    email: IconMail,
+    call: IconPhone,
+    meeting: IconUsers,
+    default: IconMessageCircle,
+};
 
 export function ClientDetail({ client, onBack, onClientUpdate, onClientDelete }: ClientDetailProps) {
   const [interactions, setInteractions] = useState<Interaction[]>([]);
@@ -115,59 +123,66 @@ export function ClientDetail({ client, onBack, onClientUpdate, onClientDelete }:
         <Textarea value={client.prep_notes || 'No prep notes saved.'} readOnly minRows={10} autosize />
       </Modal>
 
-      <Container size="md" pt="xl">
-        <Button onClick={onBack} mb="md">&larr; Back to Client List</Button>
-        <Card shadow="sm" padding="lg" radius="md" withBorder>
-          <Group justify="space-between">
-            <div>
-              <Title order={2}>{client.name}</Title>
-              {client.website_url && 
-                <Anchor href={client.website_url.startsWith('http') ? client.website_url : `https://${client.website_url}`} target="_blank" rel="noopener noreferrer" size="xs">
-                  {client.website_url}
-                </Anchor>
-              }
-              {clientTags.length > 0 && (
-                <Group gap="xs" mt="sm">{clientTags.map(tag => <Badge key={tag} variant="outline">{tag}</Badge>)}</Group>
-              )}
-            </div>
-            <Group>
-              {client.prep_notes && (
-                <Button variant="outline" onClick={openNotes}>View Prep Notes</Button>
-              )}
-              <Button variant="light" onClick={openEdit}>Edit</Button>
-            </Group>
+      <Button onClick={onBack} mb="md" variant="light">&larr; Back to Dashboard</Button>
+      <Card shadow="sm" padding="lg" radius="md" withBorder>
+        <Group justify="space-between">
+          <div>
+            <Title order={2}>{client.name}</Title>
+            {client.website_url && 
+              <Anchor href={client.website_url.startsWith('http') ? client.website_url : `https://${client.website_url}`} target="_blank" rel="noopener noreferrer" size="sm" c="dimmed">
+                {client.website_url}
+              </Anchor>
+            }
+          </div>
+          <Group>
+            {client.prep_notes && (
+              <Button variant="outline" size="xs" onClick={openNotes}>View Prep Notes</Button>
+            )}
+            <Button variant="light" size="xs" onClick={openEdit}>Edit</Button>
+            <Button variant="filled" color="red" size="xs" onClick={openDelete}>Delete</Button>
           </Group>
-          <Text mt="sm">Contact: {client.contact_email}</Text>
-          <Text>Owner: {client.owner}</Text>
-        </Card>
-        
-        <Title order={3} mt="xl">Log Interaction</Title>
-        <Paper shadow="xs" p="md" withBorder mt="md">
+        </Group>
+        <Group mt="md">
+          <Badge variant="light" color="gray">Owner: {client.owner}</Badge>
+          <Badge variant="light" color="gray">Cadence: {client.contact_cadence_days} days</Badge>
+          <Badge variant="filled" color={{high: 'red', medium: 'orange', low: 'gray'}[client.priority]}>{client.priority} priority</Badge>
+        </Group>
+        {clientTags.length > 0 && (
+          <Group gap="xs" mt="sm">{clientTags.map(tag => <Badge key={tag} variant="outline">{tag}</Badge>)}</Group>
+        )}
+      </Card>
+      
+      <Group mt="xl" grow align="flex-start">
+        <Paper withBorder p="lg" radius="md" style={{ flexBasis: '30%' }}>
+          <Title order={4} mb="md">Log a New Interaction</Title>
           <form onSubmit={interactionForm.onSubmit(handleAddInteraction)}>
             <Stack>
-              <Select label="Interaction Type" data={['email', 'call', 'meeting']} {...interactionForm.getInputProps('type')} />
-              <Textarea label="Notes" placeholder="Enter notes..." withAsterisk autosize minRows={3} {...interactionForm.getInputProps('notes')} />
-              <Button type="submit" style={{ alignSelf: 'flex-start' }}>Add Interaction</Button>
+              <Select data={['email', 'call', 'meeting']} {...interactionForm.getInputProps('type')} />
+              <Textarea placeholder="Enter notes..." autosize minRows={4} {...interactionForm.getInputProps('notes')} />
+              <Button type="submit">Log Interaction</Button>
             </Stack>
           </form>
         </Paper>
-        <Title order={3} mt="xl">Interaction History</Title>
-        {interactions.length > 0 ? (
-          <Stack mt="md">
-            {interactions.map((interaction) => (
-              <Paper key={interaction.id} p="md" shadow="xs" withBorder>
-                <Group justify='space-between'>
-                  <Badge>{interaction.type.toUpperCase()}</Badge>
-                  <Text c="dimmed" size="xs">
-                    {new Date(interaction.date).toLocaleString()} by {interaction.user_email}
-                  </Text>
-                </Group>
-                <Text mt="sm">{interaction.notes}</Text>
-              </Paper>
-            ))}
-          </Stack>
-        ) : ( <Text mt="md">No interactions logged yet.</Text> )}
-      </Container>
+
+        <Paper p="lg" radius="md" style={{ flexBasis: '70%' }}>
+            <Title order={4} mb="lg">Interaction History</Title>
+            {interactions.length > 0 ? (
+              <Timeline active={interactions.length} bulletSize={24} lineWidth={2}>
+                {interactions.map((item) => {
+                    const Icon = interactionIcons[item.type as keyof typeof interactionIcons] || interactionIcons.default;
+                    return (
+                        <Timeline.Item key={item.id} bullet={<Icon size={14} />} title={item.type.charAt(0).toUpperCase() + item.type.slice(1)}>
+                            <Text>{item.notes}</Text>
+                            <Text size="xs" c="dimmed" mt={4}>
+                                {new Date(item.date).toLocaleString()} by {item.user_email}
+                            </Text>
+                        </Timeline.Item>
+                    )
+                })}
+              </Timeline>
+            ) : (<Text c="dimmed" size="sm">No interactions logged yet.</Text>)}
+        </Paper>
+      </Group>
     </>
   );
 }

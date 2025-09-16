@@ -1,28 +1,27 @@
 import { useEffect, useState } from 'react';
-import { Modal, TextInput, Stack, Button, NumberInput, Select } from '@mantine/core';
+import { Modal, TextInput, Stack, Button, NumberInput, Select, Loader, Center, Alert } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useForm } from '@mantine/form';
+import { IconAlertCircle } from '@tabler/icons-react';
 import api from './api';
 import { ClientDetail } from './ClientDetail';
-import { Auth } from './Auth';
+import { LandingPage } from './LandingPage';
 import { Dashboard } from './Dashboard';
+import { MainAppShell } from './AppShell';
 import type { Client, ClientPriority } from './types';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [clients, setClients] = useState<Client[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [opened, { open, close }] = useDisclosure(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
   const form = useForm({
     initialValues: { 
-      name: '', 
-      company: '', 
-      contact_email: '', 
-      owner: '',
-      website_url: '',
-      contact_cadence_days: 7,
-      priority: 'medium' as ClientPriority,
+      name: '', company: '', contact_email: '', owner: '',
+      website_url: '', contact_cadence_days: 7, priority: 'medium' as ClientPriority,
     },
     validate: {
       name: (value) => (value.trim().length < 2 ? 'Name is required' : null),
@@ -32,18 +31,26 @@ function App() {
 
   useEffect(() => {
     if (token) {
+      setIsLoading(true);
+      setError(null);
       api.get('/clients')
         .then(response => setClients(response.data))
-        .catch((error: any) => { if (error.response?.status === 401) handleLogout(); });
+        .catch((error: any) => {
+          if (error.response?.status === 401) handleLogout();
+          else setError('Failed to load client data. The server might be down.');
+        })
+        .finally(() => setIsLoading(false));
+    } else {
+      setIsLoading(false);
     }
   }, [token]);
 
   const handleLoginSuccess = () => setToken(localStorage.getItem('token'));
   const handleLogout = () => { localStorage.removeItem('token'); setToken(null); setClients([]); };
   
-  const handleAddClient = async (values: typeof form.values) => {
+  const handleAddClient = async (values: any) => {
     try {
-      const response = await api.post('/clients', { ...values, prep_notes: '' });
+      const response = await api.post('/clients', values);
       setClients([response.data, ...clients]);
       close();
       form.reset();
@@ -58,18 +65,16 @@ function App() {
     setClients(clients.filter(c => c.id !== clientId));
     setSelectedClient(null);
   };
-
-  if (!token) { return <Auth onLoginSuccess={handleLoginSuccess} />; }
-  if (selectedClient) { 
-    return <ClientDetail 
-              client={selectedClient} 
-              onBack={() => setSelectedClient(null)}
-              onClientUpdate={(updatedClient) => {
-                handleUpdateClientInList(updatedClient);
-                setSelectedClient(updatedClient);
-              }}
-              onClientDelete={handleDeleteClient}
-            />;
+  
+  if (!token) { 
+    return <LandingPage onLoginSuccess={handleLoginSuccess} />; 
+  }
+  
+  if (isLoading) {
+    return <Center style={{ height: '100vh' }}><Loader /></Center>;
+  }
+  if (error) {
+    return <Center style={{ height: '100vh' }}><Alert color="red" title="Error">{error}</Alert></Center>;
   }
 
   return (
@@ -93,13 +98,26 @@ function App() {
         </form>
       </Modal>
 
-      <Dashboard 
-        clients={clients}
-        onClientSelect={setSelectedClient}
-        openAddClientModal={open}
-        handleLogout={handleLogout}
-        onUpdateClientInList={handleUpdateClientInList}
-      />
+      <MainAppShell handleLogout={handleLogout}>
+        {selectedClient ? (
+          <ClientDetail 
+            client={selectedClient} 
+            onBack={() => setSelectedClient(null)}
+            onClientUpdate={(updatedClient) => {
+              handleUpdateClientInList(updatedClient);
+              setSelectedClient(updatedClient);
+            }}
+            onClientDelete={handleDeleteClient}
+          />
+        ) : (
+          <Dashboard 
+            clients={clients}
+            onClientSelect={setSelectedClient}
+            openAddClientModal={open}
+            onUpdateClientInList={handleUpdateClientInList}
+          />
+        )}
+      </MainAppShell>
     </>
   );
 }
