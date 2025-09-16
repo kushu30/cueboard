@@ -5,6 +5,10 @@ export interface Client {
   contact_email: string;
   owner: string;
   tags: string;
+  last_contact_date?: string;
+  website_url?: string;
+  contact_cadence_days: number;
+  prep_notes?: string;
 }
 
 export interface Interaction {

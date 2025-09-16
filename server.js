@@ -36,16 +36,94 @@ app.get('/api/reminders', async (req, res) => {
   }
 });
 
+// GET /clients - Fetch all clients for the logged-in user's team
 app.get('/clients', async (req, res) => {
   try {
     const { team_id } = req.user;
-    const clients = await db('clients').where({ team_id }).select('*').orderBy('created_at', 'desc');
+    
+    // Create a subquery to find the latest interaction date for each client
+    const lastContactSubquery = db('interactions')
+      .select('client_id')
+      .max('date as last_contact_date')
+      .groupBy('client_id')
+      .as('last_contacts');
+
+    const clients = await db('clients')
+      .leftJoin(lastContactSubquery, 'clients.id', 'last_contacts.client_id')
+      .where('clients.team_id', team_id)
+      .select('clients.*', 'last_contacts.last_contact_date')
+      .orderBy('clients.created_at', 'desc');
+      
     res.status(200).json(clients);
   } catch (error) {
+    console.error("Error fetching clients:", error);
     res.status(500).json({ error: 'Failed to fetch clients' });
   }
 });
+// GET /api/agenda - Get user's agenda items for today
+app.get('/api/agenda', async (req, res) => {
+  try {
+    const { id: user_id } = req.user;
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const agendaItems = await db('agendas')
+      .join('clients', 'agendas.client_id', 'clients.id')
+      .where('agendas.user_id', user_id)
+      .andWhere('agendas.agenda_date', today)
+      .andWhere('agendas.status', 'pending')
+      .select('agendas.*', 'clients.name as client_name', 'clients.contact_email');
+    res.json(agendaItems);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch agenda' });
+  }
+});
 
+// POST /api/agenda - Add a client to the agenda
+app.post('/api/agenda', async (req, res) => {
+  try {
+    const { id: user_id } = req.user;
+    const { client_id } = req.body;
+    // Prevent duplicates
+    const today = new Date().toISOString().slice(0, 10);
+    const existing = await db('agendas').where({ user_id, client_id, agenda_date: today }).first();
+    if (existing) {
+      return res.status(409).json({ error: 'Client is already on the agenda for today.' });
+    }
+    const [newItem] = await db('agendas').insert({ user_id, client_id }).returning('*');
+    res.status(201).json(newItem);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to add to agenda' });
+  }
+});
+
+// PUT /api/agenda/:id - Update discussion points or status
+app.put('/api/agenda/:id', async (req, res) => {
+  try {
+    const { id: user_id } = req.user;
+    const { id } = req.params;
+    const { discussion_points, status } = req.body;
+    const [updatedItem] = await db('agendas')
+      .where({ id, user_id })
+      .update({ discussion_points, status })
+      .returning('*');
+    if (!updatedItem) return res.status(404).json({ error: 'Agenda item not found.' });
+    res.json(updatedItem);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update agenda item' });
+  }
+});
+
+// DELETE /api/agenda/:id - Remove item from agenda
+app.delete('/api/agenda/:id', async (req, res) => {
+  try {
+    const { id: user_id } = req.user;
+    const { id } = req.params;
+    const count = await db('agendas').where({ id, user_id }).del();
+    if (count === 0) return res.status(404).json({ error: 'Agenda item not found.' });
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to remove from agenda' });
+  }
+});
 app.post('/clients', async (req, res) => {
   try {
     const { team_id } = req.user;
@@ -88,14 +166,12 @@ app.put('/api/reminders/:id', async (req, res) => {
   }
 });
 
-// PUT /clients/:id - Update a client by ID
 app.put('/clients/:id', async (req, res) => {
     try {
         const { team_id } = req.user;
         const { id } = req.params;
-        // Explicitly pull out the fields to update for security and clarity
-        const { name, company, contact_email, owner, tags } = req.body;
-        const updateData = { name, company, contact_email, owner, tags };
+        const { name, company, contact_email, owner, tags, health_score, website_url, contact_cadence_days, prep_notes } = req.body;
+        const updateData = { name, company, contact_email, owner, tags, health_score, website_url, contact_cadence_days, prep_notes };
 
         const [updatedClient] = await db('clients')
             .where({ id: id, team_id: team_id })
@@ -110,6 +186,8 @@ app.put('/clients/:id', async (req, res) => {
         res.status(500).json({ error: 'Failed to update client' });
     }
 });
+
+
 // DELETE /clients/:id - Delete a client by ID
 app.delete('/clients/:id', async (req, res) => {
     try {

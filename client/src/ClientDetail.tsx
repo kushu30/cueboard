@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Container, Title, Text, Button, Card, Stack, Textarea, Select, Group, Paper, Badge, Modal, TextInput, MultiSelect } from '@mantine/core';
+import { Container, Title, Text, Button, Card, Stack, Textarea, Select, Group, Paper, Badge, Modal, TextInput, NumberInput, Anchor, MultiSelect } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import api from './api';
@@ -18,7 +18,7 @@ export function ClientDetail({ client, onBack, onClientUpdate, onClientDelete }:
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [editOpened, { open: openEdit, close: closeEdit }] = useDisclosure(false);
   const [deleteOpened, { open: openDelete, close: closeDelete }] = useDisclosure(false);
-  const [tagData, setTagData] = useState<string[]>([]);
+  const [notesOpened, { open: openNotes, close: closeNotes }] = useDisclosure(false);
 
   const interactionForm = useForm({
     initialValues: { type: 'email', notes: '' },
@@ -27,22 +27,26 @@ export function ClientDetail({ client, onBack, onClientUpdate, onClientDelete }:
 
   const editForm = useForm({
     initialValues: {
-        ...client,
-        tags: client.tags ? client.tags.split(',').map(t => t.trim()).filter(Boolean) : []
+      ...client,
+      tags: client.tags ? client.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
     },
     validate: {
       name: (value) => (value.trim().length < 2 ? 'Name is required' : null),
       contact_email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Invalid email'),
     },
   });
-
+  
   useEffect(() => {
     api.get(`/clients/${client.id}/interactions`)
-      .then(response => setInteractions(response.data))
-      .catch(error => console.error('Failed to fetch interactions:', error));
+      .then(res => setInteractions(res.data))
+      .catch(console.error);
     
-    setTagData([...new Set([...PREMADE_TAGS, ...editForm.values.tags])]);
-  }, [client.id, editForm.values.tags]);
+    editForm.setValues({
+      ...client,
+      tags: client.tags ? client.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+    });
+
+  }, [client]);
 
   const handleAddInteraction = async (values: typeof interactionForm.values) => {
     try {
@@ -52,23 +56,24 @@ export function ClientDetail({ client, onBack, onClientUpdate, onClientDelete }:
     } catch (error) { console.error('Failed to add interaction:', error); }
   };
 
-  const handleUpdateClient = async (values: { name: string, company: string, contact_email: string, owner: string, tags: string[] }) => {
+  const handleUpdateClient = async (values: any) => {
     try {
-        const payload = { ...values, tags: values.tags.join(',') };
-        const response = await api.put(`/clients/${client.id}`, payload);
-        onClientUpdate(response.data);
-        closeEdit();
+      const payload = { ...values, tags: values.tags.join(',') };
+      const response = await api.put(`/clients/${client.id}`, payload);
+      onClientUpdate(response.data);
+      closeEdit();
     } catch (error) { console.error('Failed to update client:', error); }
   };
 
   const handleDelete = async () => {
     try {
-        await api.delete(`/clients/${client.id}`);
-        onClientDelete(client.id);
+      await api.delete(`/clients/${client.id}`);
+      onClientDelete(client.id);
     } catch (error) { console.error('Failed to delete client:', error); }
   };
 
   const clientTags = client.tags ? client.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+  const tagData = [...new Set([...PREMADE_TAGS, ...editForm.values.tags])];
 
   return (
     <>
@@ -79,7 +84,8 @@ export function ClientDetail({ client, onBack, onClientUpdate, onClientDelete }:
             <TextInput label="Company" {...editForm.getInputProps('company')} />
             <TextInput withAsterisk label="Contact Email" {...editForm.getInputProps('contact_email')} />
             <TextInput label="Owner" {...editForm.getInputProps('owner')} />
-            
+            <TextInput label="Website URL" placeholder="https://example.com" {...editForm.getInputProps('website_url')} />
+            <NumberInput label="Contact Cadence (Days)" placeholder="7" min={1} {...editForm.getInputProps('contact_cadence_days')} />
             <MultiSelect
               label="Tags"
               placeholder="Select tags"
@@ -87,7 +93,6 @@ export function ClientDetail({ client, onBack, onClientUpdate, onClientDelete }:
               searchable
               {...editForm.getInputProps('tags')}
             />
-
             <Button type="submit" mt="md">Save Changes</Button>
           </Stack>
         </form>
@@ -101,22 +106,30 @@ export function ClientDetail({ client, onBack, onClientUpdate, onClientDelete }:
         </Group>
       </Modal>
 
+      <Modal opened={notesOpened} onClose={closeNotes} title={`Prep Notes for ${client.name}`}>
+        <Textarea value={client.prep_notes || 'No prep notes saved.'} readOnly minRows={10} autosize />
+      </Modal>
+
       <Container size="md" pt="xl">
         <Button onClick={onBack} mb="md">&larr; Back to Client List</Button>
         <Card shadow="sm" padding="lg" radius="md" withBorder>
           <Group justify="space-between">
             <div>
               <Title order={2}>{client.name}</Title>
-              <Text c="dimmed">{client.company}</Text>
+              {client.website_url && 
+                <Anchor href={client.website_url.startsWith('http') ? client.website_url : `https://${client.website_url}`} target="_blank" rel="noopener noreferrer" size="xs">
+                  {client.website_url}
+                </Anchor>
+              }
               {clientTags.length > 0 && (
-                <Group gap="xs" mt="sm">
-                  {clientTags.map(tag => <Badge key={tag} variant="outline">{tag}</Badge>)}
-                </Group>
+                <Group gap="xs" mt="sm">{clientTags.map(tag => <Badge key={tag} variant="outline">{tag}</Badge>)}</Group>
               )}
             </div>
             <Group>
+              {client.prep_notes && (
+                <Button variant="outline" onClick={openNotes}>View Prep Notes</Button>
+              )}
               <Button variant="light" onClick={openEdit}>Edit</Button>
-              <Button variant="light" color="red" onClick={openDelete}>Delete</Button>
             </Group>
           </Group>
           <Text mt="sm">Contact: {client.contact_email}</Text>

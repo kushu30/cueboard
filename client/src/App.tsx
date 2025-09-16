@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, TextInput, Stack, Button } from '@mantine/core';
+import { Modal, TextInput, Stack, Button, NumberInput } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useForm } from '@mantine/form';
 import api from './api';
@@ -7,6 +7,7 @@ import { ClientDetail } from './ClientDetail';
 import { Auth } from './Auth';
 import { Dashboard } from './Dashboard';
 import type { Client } from './types';
+
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [clients, setClients] = useState<Client[]>([]);
@@ -14,7 +15,14 @@ function App() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
   const form = useForm({
-    initialValues: { name: '', company: '', contact_email: '', owner: '' },
+    initialValues: { 
+      name: '', 
+      company: '', 
+      contact_email: '', 
+      owner: '',
+      website_url: '',
+      contact_cadence_days: 7,
+    },
     validate: {
       name: (value) => (value.trim().length < 2 ? 'Name is required' : null),
       contact_email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Invalid email'),
@@ -34,16 +42,15 @@ function App() {
   
   const handleAddClient = async (values: typeof form.values) => {
     try {
-      const response = await api.post('/clients', values);
+      const response = await api.post('/clients', { ...values, prep_notes: '' });
       setClients([response.data, ...clients]);
       close();
       form.reset();
     } catch (err) { console.error('Failed to add client:', err); }
   };
 
-  const handleUpdateClient = (updatedClient: Client) => {
+  const handleUpdateClientInList = (updatedClient: Client) => {
     setClients(clients.map(c => c.id === updatedClient.id ? updatedClient : c));
-    setSelectedClient(updatedClient);
   };
 
   const handleDeleteClient = (clientId: number) => {
@@ -56,7 +63,10 @@ function App() {
     return <ClientDetail 
               client={selectedClient} 
               onBack={() => setSelectedClient(null)}
-              onClientUpdate={handleUpdateClient}
+              onClientUpdate={(updatedClient) => {
+                handleUpdateClientInList(updatedClient);
+                setSelectedClient(updatedClient);
+              }}
               onClientDelete={handleDeleteClient}
             />;
   }
@@ -66,10 +76,12 @@ function App() {
       <Modal opened={opened} onClose={close} title="Add New Client">
         <form onSubmit={form.onSubmit(handleAddClient)}>
           <Stack>
-            <TextInput withAsterisk label="Name" placeholder="Client Name" {...form.getInputProps('name')} />
-            <TextInput label="Company" placeholder="Client's Company" {...form.getInputProps('company')} />
-            <TextInput withAsterisk label="Contact Email" placeholder="contact@company.com" {...form.getInputProps('contact_email')} />
-            <TextInput label="Owner" placeholder="Your Name" {...form.getInputProps('owner')} />
+            <TextInput withAsterisk label="Name" {...form.getInputProps('name')} />
+            <TextInput label="Company" {...form.getInputProps('company')} />
+            <TextInput withAsterisk label="Contact Email" {...form.getInputProps('contact_email')} />
+            <TextInput label="Owner" {...form.getInputProps('owner')} />
+            <TextInput label="Website URL" placeholder="https://example.com" {...form.getInputProps('website_url')} />
+            <NumberInput label="Contact Cadence (Days)" placeholder="7" min={1} {...form.getInputProps('contact_cadence_days')} />
             <Button type="submit" mt="md">Create Client</Button>
           </Stack>
         </form>
@@ -80,6 +92,7 @@ function App() {
         onClientSelect={setSelectedClient}
         openAddClientModal={open}
         handleLogout={handleLogout}
+        onUpdateClientInList={handleUpdateClientInList}
       />
     </>
   );

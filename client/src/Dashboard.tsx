@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Table, Title, Container, Button, Group, TextInput, Alert, List, ThemeIcon, Badge, ActionIcon } from '@mantine/core';
-import { IconAlertTriangle, IconCircleCheck } from '@tabler/icons-react';
+import { Table, Title, Container, Button, Group, TextInput, Alert, List, Badge } from '@mantine/core';
+import { IconAlertTriangle, IconCircleCheck, IconArrowsSort } from '@tabler/icons-react';
 import api from './api';
 import type { Client } from './types';
+import { MeetingPrep } from './MeetingPrep';
 
 interface Reminder {
   id: number; rule: string; client_name: string; client_id: number;
@@ -12,11 +13,13 @@ interface DashboardProps {
   onClientSelect: (client: Client) => void;
   openAddClientModal: () => void;
   handleLogout: () => void;
+  onUpdateClientInList: (client: Client) => void;
 }
 
-export function Dashboard({ clients, onClientSelect, openAddClientModal, handleLogout }: DashboardProps) {
+export function Dashboard({ clients, onClientSelect, openAddClientModal, handleLogout, onUpdateClientInList }: DashboardProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [sortByLastContact, setSortByLastContact] = useState(false);
 
   useEffect(() => {
     api.get('/api/reminders')
@@ -28,28 +31,31 @@ export function Dashboard({ clients, onClientSelect, openAddClientModal, handleL
     try {
       await api.put(`/api/reminders/${reminderId}`, { status: 'dismissed' });
       setReminders(reminders.filter(r => r.id !== reminderId));
-    } catch (error) {
-      console.error("Failed to dismiss reminder:", error);
-    }
+    } catch (error) { console.error("Failed to dismiss reminder:", error); }
   };
 
-  const filteredClients = clients.filter(client => 
-    client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (client.company && client.company.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const processedClients = [...clients]
+    .sort((a, b) => {
+      if (!sortByLastContact) return 0;
+      const dateA = a.last_contact_date ? new Date(a.last_contact_date).getTime() : 0;
+      const dateB = b.last_contact_date ? new Date(b.last_contact_date).getTime() : 0;
+      if (dateA === 0 && dateB !== 0) return -1;
+      if (dateB === 0 && dateA !== 0) return 1;
+      return dateA - dateB;
+    })
+    .filter(client => 
+      client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (client.company && client.company.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
   
-  const rows = filteredClients.map((client) => {
+  const rows = processedClients.map((client) => {
     const tags = client.tags ? client.tags.split(',').map(t => t.trim()).filter(t => t) : [];
     return (
       <Table.Tr key={client.id} onClick={() => onClientSelect(client)} style={{ cursor: 'pointer' }}>
         <Table.Td>{client.name}</Table.Td>
         <Table.Td>{client.company}</Table.Td>
         <Table.Td>
-          {tags.length > 0 ? (
-            <Group gap="xs">
-              {tags.map(tag => <Badge key={tag} size="sm" variant="light">{tag}</Badge>)}
-            </Group>
-          ) : null}
+          {tags.length > 0 && <Group gap="xs">{tags.map(tag => <Badge key={tag} size="sm" variant="light">{tag}</Badge>)}</Group>}
         </Table.Td>
         <Table.Td>{client.owner}</Table.Td>
       </Table.Tr>
@@ -92,8 +98,19 @@ export function Dashboard({ clients, onClientSelect, openAddClientModal, handleL
           </List>
         </Alert>
       )}
+
+      <MeetingPrep clients={clients} onUpdateClientInList={onUpdateClientInList} />
       
-      <Title order={2} size="h3" mb="md">All Clients</Title>
+      <Group justify="space-between" mb="md">
+        <Title order={2} size="h3">All Clients</Title>
+        <Button 
+          variant={sortByLastContact ? "light" : "subtle"}
+          leftSection={<IconArrowsSort size={16} />}
+          onClick={() => setSortByLastContact(!sortByLastContact)}
+        >
+          Sort by Last Contact
+        </Button>
+      </Group>
       <TextInput 
         placeholder="Search by name or company..."
         value={searchTerm}

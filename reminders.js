@@ -2,35 +2,36 @@ import db from './db/index.js';
 import { subDays } from 'date-fns';
 
 export async function generateReminders() {
-  console.log('Running daily reminder check...');
-  const thirtyDaysAgo = subDays(new Date(), 30);
-  
+  console.log('Running daily cadence check...');
   try {
-    const clientsToFlag = await db('clients')
-      .select('clients.id as client_id', 'clients.team_id')
-      .leftJoin('interactions', 'clients.id', 'interactions.client_id')
-      .groupBy('clients.id', 'clients.team_id')
-      .having(db.raw('MAX(interactions.date) < ?', [thirtyDaysAgo]))
-      .orWhere(db.raw('MAX(interactions.date) IS NULL'));
+    const clients = await db('clients').select('id', 'contact_cadence_days');
+    const lastContacts = await db('interactions')
+      .select('client_id')
+      .max('date as last_contact_date')
+      .groupBy('client_id');
+    
+    const lastContactMap = new Map(lastContacts.map(i => [i.client_id, new Date(i.last_contact_date)]));
 
-    if (clientsToFlag.length === 0) {
-      console.log('No clients need reminders today.');
-      return;
-    }
+    for (const client of clients) {
+      const lastContactDate = lastContactMap.get(client.id);
+      const cadence = client.contact_cadence_days || 30;
+      const dueDate = subDays(new Date(), cadence);
 
-    for (const client of clientsToFlag) {
-      const existingReminder = await db('reminders')
-        .where({ client_id: client.client_id, status: 'pending' })
-        .first();
+      // If last contact is older than the due date, or if there's no contact at all
+      if (!lastContactDate || lastContactDate < dueDate) {
+        const existingReminder = await db('reminders')
+          .where({ client_id: client.id, status: 'pending' })
+          .first();
 
-      if (!existingReminder) {
-        await db('reminders').insert({
-          client_id: client.client_id,
-          rule: 'No contact in 30 days',
-          status: 'pending',
-          scheduled_at: new Date(),
-        });
-        console.log(`Generated reminder for client ID: ${client.client_id}`);
+        if (!existingReminder) {
+          await db('reminders').insert({
+            client_id: client.id,
+            rule: `Contact due (Cadence: ${cadence} days)`,
+            status: 'pending',
+            scheduled_at: new Date(),
+          });
+          console.log(`Generated reminder for client ID: ${client.id}`);
+        }
       }
     }
   } catch (error) {
