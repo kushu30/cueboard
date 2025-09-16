@@ -1,15 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Container, Title, Text, Button, Card, Stack, Textarea, Select, Group, Paper, Badge, Modal, TextInput } from '@mantine/core';
+import { Container, Title, Text, Button, Card, Stack, Textarea, Select, Group, Paper, Badge, Modal, TextInput, MultiSelect } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import api from './api';
+import type { Client, Interaction } from './types';
 
-interface Client {
-  id: number; name: string; company: string; contact_email: string; owner: string;
-}
-interface Interaction {
-  id: number; type: string; notes: string; date: string; user_email: string;
-}
+const PREMADE_TAGS = ['premium', 'at-risk', 'new-lead', 'renewal-due', 'needs-onboarding'];
+
 interface ClientDetailProps {
   client: Client;
   onBack: () => void;
@@ -21,6 +18,7 @@ export function ClientDetail({ client, onBack, onClientUpdate, onClientDelete }:
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [editOpened, { open: openEdit, close: closeEdit }] = useDisclosure(false);
   const [deleteOpened, { open: openDelete, close: closeDelete }] = useDisclosure(false);
+  const [tagData, setTagData] = useState<string[]>([]);
 
   const interactionForm = useForm({
     initialValues: { type: 'email', notes: '' },
@@ -28,7 +26,10 @@ export function ClientDetail({ client, onBack, onClientUpdate, onClientDelete }:
   });
 
   const editForm = useForm({
-    initialValues: { ...client },
+    initialValues: {
+        ...client,
+        tags: client.tags ? client.tags.split(',').map(t => t.trim()).filter(Boolean) : []
+    },
     validate: {
       name: (value) => (value.trim().length < 2 ? 'Name is required' : null),
       contact_email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Invalid email'),
@@ -39,7 +40,9 @@ export function ClientDetail({ client, onBack, onClientUpdate, onClientDelete }:
     api.get(`/clients/${client.id}/interactions`)
       .then(response => setInteractions(response.data))
       .catch(error => console.error('Failed to fetch interactions:', error));
-  }, [client.id]);
+    
+    setTagData([...new Set([...PREMADE_TAGS, ...editForm.values.tags])]);
+  }, [client.id, editForm.values.tags]);
 
   const handleAddInteraction = async (values: typeof interactionForm.values) => {
     try {
@@ -49,9 +52,10 @@ export function ClientDetail({ client, onBack, onClientUpdate, onClientDelete }:
     } catch (error) { console.error('Failed to add interaction:', error); }
   };
 
-  const handleUpdateClient = async (values: typeof editForm.values) => {
+  const handleUpdateClient = async (values: { name: string, company: string, contact_email: string, owner: string, tags: string[] }) => {
     try {
-        const response = await api.put(`/clients/${client.id}`, values);
+        const payload = { ...values, tags: values.tags.join(',') };
+        const response = await api.put(`/clients/${client.id}`, payload);
         onClientUpdate(response.data);
         closeEdit();
     } catch (error) { console.error('Failed to update client:', error); }
@@ -64,6 +68,8 @@ export function ClientDetail({ client, onBack, onClientUpdate, onClientDelete }:
     } catch (error) { console.error('Failed to delete client:', error); }
   };
 
+  const clientTags = client.tags ? client.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+
   return (
     <>
       <Modal opened={editOpened} onClose={closeEdit} title="Edit Client">
@@ -73,6 +79,15 @@ export function ClientDetail({ client, onBack, onClientUpdate, onClientDelete }:
             <TextInput label="Company" {...editForm.getInputProps('company')} />
             <TextInput withAsterisk label="Contact Email" {...editForm.getInputProps('contact_email')} />
             <TextInput label="Owner" {...editForm.getInputProps('owner')} />
+            
+            <MultiSelect
+              label="Tags"
+              placeholder="Select tags"
+              data={tagData}
+              searchable
+              {...editForm.getInputProps('tags')}
+            />
+
             <Button type="submit" mt="md">Save Changes</Button>
           </Stack>
         </form>
@@ -93,6 +108,11 @@ export function ClientDetail({ client, onBack, onClientUpdate, onClientDelete }:
             <div>
               <Title order={2}>{client.name}</Title>
               <Text c="dimmed">{client.company}</Text>
+              {clientTags.length > 0 && (
+                <Group gap="xs" mt="sm">
+                  {clientTags.map(tag => <Badge key={tag} variant="outline">{tag}</Badge>)}
+                </Group>
+              )}
             </div>
             <Group>
               <Button variant="light" onClick={openEdit}>Edit</Button>
@@ -102,7 +122,7 @@ export function ClientDetail({ client, onBack, onClientUpdate, onClientDelete }:
           <Text mt="sm">Contact: {client.contact_email}</Text>
           <Text>Owner: {client.owner}</Text>
         </Card>
-
+        
         <Title order={3} mt="xl">Log Interaction</Title>
         <Paper shadow="xs" p="md" withBorder mt="md">
           <form onSubmit={interactionForm.onSubmit(handleAddInteraction)}>
@@ -113,11 +133,22 @@ export function ClientDetail({ client, onBack, onClientUpdate, onClientDelete }:
             </Stack>
           </form>
         </Paper>
-        
         <Title order={3} mt="xl">Interaction History</Title>
         {interactions.length > 0 ? (
-          <Stack mt="md">{interactions.map((i) => (<Paper key={i.id} p="md" shadow="xs" withBorder>{/* ... */}</Paper>))}</Stack>
-        ) : (<Text mt="md">No interactions logged yet.</Text>)}
+          <Stack mt="md">
+            {interactions.map((interaction) => (
+              <Paper key={interaction.id} p="md" shadow="xs" withBorder>
+                <Group justify='space-between'>
+                  <Badge>{interaction.type.toUpperCase()}</Badge>
+                  <Text c="dimmed" size="xs">
+                    {new Date(interaction.date).toLocaleString()} by {interaction.user_email}
+                  </Text>
+                </Group>
+                <Text mt="sm">{interaction.notes}</Text>
+              </Paper>
+            ))}
+          </Stack>
+        ) : ( <Text mt="md">No interactions logged yet.</Text> )}
       </Container>
     </>
   );

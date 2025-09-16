@@ -93,11 +93,13 @@ app.put('/clients/:id', async (req, res) => {
     try {
         const { team_id } = req.user;
         const { id } = req.params;
-        const updates = req.body;
-        
+        // Explicitly pull out the fields to update for security and clarity
+        const { name, company, contact_email, owner, tags } = req.body;
+        const updateData = { name, company, contact_email, owner, tags };
+
         const [updatedClient] = await db('clients')
-            .where({ id: id, team_id: team_id }) // Security check
-            .update(updates)
+            .where({ id: id, team_id: team_id })
+            .update(updateData)
             .returning('*');
 
          if (!updatedClient) {
@@ -108,7 +110,6 @@ app.put('/clients/:id', async (req, res) => {
         res.status(500).json({ error: 'Failed to update client' });
     }
 });
-
 // DELETE /clients/:id - Delete a client by ID
 app.delete('/clients/:id', async (req, res) => {
     try {

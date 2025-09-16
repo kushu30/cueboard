@@ -6,11 +6,7 @@ import api from './api';
 import { ClientDetail } from './ClientDetail';
 import { Auth } from './Auth';
 import { Dashboard } from './Dashboard';
-
-interface Client {
-  id: number; name: string; company: string; contact_email: string; owner: string;
-}
-
+import type { Client } from './types';
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [clients, setClients] = useState<Client[]>([]);
