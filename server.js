@@ -3,10 +3,10 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import cron from 'node-cron';
 import db from './db/index.js';
 import authRouter from './auth.js';
 import authMiddleware from './middleware/auth.js';
-import cron from 'node-cron';
 import { generateReminders } from './reminders.js';
 
 const app = express();
@@ -17,11 +17,16 @@ app.use(express.json());
 
 app.use('/api/auth', authRouter);
 
-app.get('/', (req, res) => {
-  res.json({ message: 'Cueboard API is alive!' });
-});
-
 app.use(authMiddleware);
+
+app.get('/api/users/me', async (req, res) => {
+    try {
+        const user = await db('users').where({ id: req.user.id }).select('id', 'email', 'team_id').first();
+        res.json(user);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch user' });
+    }
+});
 
 app.get('/api/reminders', async (req, res) => {
   try {
@@ -35,107 +40,7 @@ app.get('/api/reminders', async (req, res) => {
       
     res.json(reminders);
   } catch (error) {
-    console.error('Error fetching reminders:', error);
     res.status(500).json({ error: 'Failed to fetch reminders' });
-  }
-});
-
-app.get('/clients', async (req, res) => {
-  try {
-    const { team_id } = req.user;
-    
-    const lastContactSubquery = db('interactions')
-      .select('client_id')
-      .max('date as last_contact_date')
-      .groupBy('client_id')
-      .as('last_contacts');
-
-    const clients = await db('clients')
-      .leftJoin(lastContactSubquery, 'clients.id', 'last_contacts.client_id')
-      .where('clients.team_id', team_id)
-      .select('clients.*', 'last_contacts.last_contact_date')
-      .orderBy('clients.created_at', 'desc');
-      
-    res.status(200).json(clients);
-  } catch (error) {
-    console.error("Error fetching clients:", error);
-    res.status(500).json({ error: 'Failed to fetch clients' });
-  }
-});
-
-app.get('/api/agenda', async (req, res) => {
-  try {
-    const { id: user_id } = req.user;
-    const today = new Date().toISOString().slice(0, 10);
-    const agendaItems = await db('agendas')
-      .join('clients', 'agendas.client_id', 'clients.id')
-      .where('agendas.user_id', user_id)
-      .andWhere('agendas.agenda_date', today)
-      .andWhere('agendas.status', 'pending')
-      .select('agendas.*', 'clients.name as client_name', 'clients.contact_email');
-    res.json(agendaItems);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch agenda' });
-  }
-});
-
-app.post('/api/agenda', async (req, res) => {
-  try {
-    const { id: user_id } = req.user;
-    const { client_id } = req.body;
-    const today = new Date().toISOString().slice(0, 10);
-    const existing = await db('agendas').where({ user_id, client_id, agenda_date: today }).first();
-    if (existing) {
-      return res.status(409).json({ error: 'Client is already on the agenda for today.' });
-    }
-    const [newItem] = await db('agendas').insert({ user_id, client_id }).returning('*');
-    res.status(201).json(newItem);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to add to agenda' });
-  }
-});
-
-app.put('/api/agenda/:id', async (req, res) => {
-  try {
-    const { id: user_id } = req.user;
-    const { id } = req.params;
-    const { discussion_points, status } = req.body;
-    const [updatedItem] = await db('agendas')
-      .where({ id, user_id })
-      .update({ discussion_points, status })
-      .returning('*');
-    if (!updatedItem) return res.status(404).json({ error: 'Agenda item not found.' });
-    res.json(updatedItem);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update agenda item' });
-  }
-});
-
-app.delete('/api/agenda/:id', async (req, res) => {
-  try {
-    const { id: user_id } = req.user;
-    const { id } = req.params;
-    const count = await db('agendas').where({ id, user_id }).del();
-    if (count === 0) return res.status(404).json({ error: 'Agenda item not found.' });
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to remove from agenda' });
-  }
-});
-
-app.post('/clients', async (req, res) => {
-  try {
-    const { team_id } = req.user;
-    const { name, contact_email, company, owner, website_url, contact_cadence_days, priority } = req.body;
-    if (!name || !contact_email) {
-      return res.status(400).json({ error: 'Name and contact_email are required' });
-    }
-    const [newClient] = await db('clients')
-        .insert({ name, contact_email, company, owner, team_id, website_url, contact_cadence_days, priority, prep_notes: '' })
-        .returning('*');
-    res.status(201).json(newClient);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to create client' });
   }
 });
 
@@ -157,10 +62,39 @@ app.put('/api/reminders/:id', async (req, res) => {
     
     await db('reminders').where({ id: reminderId }).update({ status });
     res.status(200).json({ message: 'Reminder updated successfully.' });
-
   } catch (error) {
-    console.error('Error updating reminder:', error);
     res.status(500).json({ error: 'Failed to update reminder' });
+  }
+});
+
+app.get('/clients', async (req, res) => {
+  try {
+    const { team_id } = req.user;
+    const lastContactSubquery = db('interactions').select('client_id').max('date as last_contact_date').groupBy('client_id').as('last_contacts');
+    const clients = await db('clients')
+      .leftJoin(lastContactSubquery, 'clients.id', 'last_contacts.client_id')
+      .where('clients.team_id', team_id)
+      .select('clients.*', 'last_contacts.last_contact_date')
+      .orderBy('clients.created_at', 'desc');
+    res.status(200).json(clients);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch clients' });
+  }
+});
+
+app.post('/clients', async (req, res) => {
+  try {
+    const { team_id } = req.user;
+    const { name, contact_email, company, owner, website_url, contact_cadence_days, priority } = req.body;
+    if (!name || !contact_email) {
+      return res.status(400).json({ error: 'Name and contact_email are required' });
+    }
+    const [newClient] = await db('clients')
+        .insert({ name, contact_email, company, owner, team_id, website_url, contact_cadence_days, priority, prep_notes: '' })
+        .returning('*');
+    res.status(201).json(newClient);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create client' });
   }
 });
 
@@ -168,8 +102,8 @@ app.put('/clients/:id', async (req, res) => {
     try {
         const { team_id } = req.user;
         const { id } = req.params;
-        const { name, company, contact_email, owner, tags, website_url, contact_cadence_days, prep_notes, priority } = req.body;
-        const updateData = { name, company, contact_email, owner, tags, website_url, contact_cadence_days, prep_notes, priority };
+        const { name, company, contact_email, owner, tags, website_url, contact_cadence_days, prep_notes, priority, status } = req.body;
+        const updateData = { name, company, contact_email, owner, tags, website_url, contact_cadence_days, prep_notes, priority, status };
 
         const [updatedClient] = await db('clients')
             .where({ id: id, team_id: team_id })
@@ -189,9 +123,7 @@ app.delete('/clients/:id', async (req, res) => {
     try {
         const { team_id } = req.user;
         const { id } = req.params;
-
         const count = await db('clients').where({ id: id, team_id: team_id }).del();
-        
         if (count === 0) {
             return res.status(404).json({ error: 'Client not found or access denied.' });
         }
@@ -205,21 +137,17 @@ app.get('/clients/:id/interactions', async (req, res) => {
     try {
         const { team_id } = req.user;
         const { id: client_id } = req.params;
-
         const client = await db('clients').where({ id: client_id, team_id }).first();
         if (!client) {
             return res.status(404).json({ error: 'Client not found or access denied.' });
         }
-        
         const interactions = await db('interactions')
             .join('users', 'interactions.user_id', 'users.id')
             .where({ client_id })
             .select('interactions.*', 'users.email as user_email')
             .orderBy('date', 'desc');
-
         res.status(200).json(interactions);
     } catch (error) {
-        console.error("Error fetching interactions:", error);
         res.status(500).json({ error: 'Failed to fetch interactions' });
     }
 });
@@ -229,7 +157,6 @@ app.post('/clients/:id/interactions', async (req, res) => {
         const { team_id, id: user_id, email: user_email } = req.user;
         const { id: client_id } = req.params;
         const { type, notes, next_action_date } = req.body;
-
         const client = await db('clients').where({ id: client_id, team_id }).first();
         if (!client) {
             return res.status(404).json({ error: 'Client not found or access denied.' });
@@ -237,27 +164,21 @@ app.post('/clients/:id/interactions', async (req, res) => {
         if (!type || !notes) {
             return res.status(400).json({ error: 'Interaction type and notes are required' });
         }
-
         const insertData = { client_id, type, notes, user_id };
         if (next_action_date) {
             insertData.next_action_date = next_action_date;
         }
-
         const [newInteraction] = await db('interactions').insert(insertData).returning('*');
         const finalInteraction = { ...newInteraction, user_email };
-
         res.status(201).json(finalInteraction);
     } catch (error) {
-        console.error("Error creating interaction:", error);
         res.status(500).json({ error: 'Failed to create interaction' });
     }
 });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
 app.use(express.static(path.join(__dirname, 'client/dist')));
-
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client/dist', 'index.html'));
 });
