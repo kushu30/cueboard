@@ -13,8 +13,13 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --omit=dev
 
-# Copy the rest of the backend source code
-COPY . .
+# Explicitly copy all backend source files and directories
+COPY auth.js ./
+COPY middleware ./middleware
+COPY config ./config
+COPY models ./models
+COPY reminders.js ./
+COPY server.js ./
 
 # Copy ONLY the built frontend from the 'builder' stage
 COPY --from=builder /app/client/dist ./client/dist
