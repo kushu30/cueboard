@@ -1,36 +1,37 @@
-import db from './db/index.js';
 import { subDays } from 'date-fns';
+import Client from './models/Client.js';
+import Interaction from './models/Interaction.js';
+import Reminder from './models/Reminder.js';
 
 export async function generateReminders() {
   console.log('Running daily cadence check...');
   try {
-    const clients = await db('clients').select('id', 'contact_cadence_days');
-    const lastContacts = await db('interactions')
-      .select('client_id')
-      .max('date as last_contact_date')
-      .groupBy('client_id');
+    const clients = await Client.find({}, '_id contact_cadence_days');
     
-    const lastContactMap = new Map(lastContacts.map(i => [i.client_id, new Date(i.last_contact_date)]));
+    const lastContacts = await Interaction.aggregate([
+      { $sort: { date: -1 } },
+      { $group: { _id: "$client_id", last_contact_date: { $first: "$date" } } }
+    ]);
+    
+    const lastContactMap = new Map(lastContacts.map(i => [i._id.toString(), i.last_contact_date]));
 
     for (const client of clients) {
-      const lastContactDate = lastContactMap.get(client.id);
+      const lastContactDate = lastContactMap.get(client._id.toString());
       const cadence = client.contact_cadence_days || 30;
       const dueDate = subDays(new Date(), cadence);
 
-      // If last contact is older than the due date, or if there's no contact at all
       if (!lastContactDate || lastContactDate < dueDate) {
-        const existingReminder = await db('reminders')
-          .where({ client_id: client.id, status: 'pending' })
-          .first();
+        const existingReminder = await Reminder.findOne({ 
+          client_id: client._id, 
+          status: 'pending' 
+        });
 
         if (!existingReminder) {
-          await db('reminders').insert({
-            client_id: client.id,
+          await Reminder.create({
+            client_id: client._id,
             rule: `Contact due (Cadence: ${cadence} days)`,
-            status: 'pending',
-            scheduled_at: new Date(),
           });
-          console.log(`Generated reminder for client ID: ${client.id}`);
+          console.log(`Generated reminder for client ID: ${client._id}`);
         }
       }
     }

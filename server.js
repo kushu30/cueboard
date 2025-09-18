@@ -4,10 +4,16 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cron from 'node-cron';
-import db from './db/index.js';
+import connectDB from './config/db.js';
 import authRouter from './auth.js';
 import authMiddleware from './middleware/auth.js';
 import { generateReminders } from './reminders.js';
+import Client from './models/Client.js';
+import User from './models/User.js';
+import Interaction from './models/Interaction.js';
+import Reminder from './models/Reminder.js';
+
+connectDB();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -21,7 +27,7 @@ app.use(authMiddleware);
 
 app.get('/api/users/me', async (req, res) => {
     try {
-        const user = await db('users').where({ id: req.user.id }).select('id', 'email', 'team_id').first();
+        const user = await User.findById(req.user.id).select('-password_hash');
         res.json(user);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch user' });
@@ -31,14 +37,24 @@ app.get('/api/users/me', async (req, res) => {
 app.get('/api/reminders', async (req, res) => {
   try {
     const { team_id } = req.user;
-    const reminders = await db('reminders')
-      .join('clients', 'reminders.client_id', 'clients.id')
-      .where('clients.team_id', team_id)
-      .andWhere('reminders.status', 'pending')
-      .select('reminders.id', 'reminders.rule', 'clients.name as client_name', 'clients.id as client_id', 'clients.priority')
-      .orderByRaw("CASE clients.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END");
+    const clientsForTeam = await Client.find({ team_id }).select('_id');
+    const clientIds = clientsForTeam.map(c => c._id);
+    
+    const reminders = await Reminder.find({ client_id: { $in: clientIds }, status: 'pending' })
+      .populate('client_id', 'name priority');
+
+    const priorityOrder = { high: 1, medium: 2, low: 3 };
+    reminders.sort((a, b) => priorityOrder[a.client_id.priority] - priorityOrder[b.client_id.priority]);
       
-    res.json(reminders);
+    const response = reminders.map(r => ({
+        id: r._id,
+        rule: r.rule,
+        client_name: r.client_id.name,
+        client_id: r.client_id._id,
+        priority: r.client_id.priority
+    }));
+
+    res.json(response);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch reminders' });
   }
@@ -50,17 +66,17 @@ app.put('/api/reminders/:id', async (req, res) => {
     const { id: reminderId } = req.params;
     const { status } = req.body;
 
-    const reminder = await db('reminders')
-      .join('clients', 'reminders.client_id', 'clients.id')
-      .where('reminders.id', reminderId)
-      .andWhere('clients.team_id', team_id)
-      .first();
-      
+    const reminder = await Reminder.findById(reminderId);
     if (!reminder) {
-      return res.status(404).json({ error: 'Reminder not found or access denied.' });
+        return res.status(404).json({ error: 'Reminder not found.' });
+    }
+
+    const client = await Client.findOne({ _id: reminder.client_id, team_id: team_id });
+    if (!client) {
+      return res.status(403).json({ error: 'Access denied.' });
     }
     
-    await db('reminders').where({ id: reminderId }).update({ status });
+    await Reminder.findByIdAndUpdate(reminderId, { status });
     res.status(200).json({ message: 'Reminder updated successfully.' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update reminder' });
@@ -70,12 +86,21 @@ app.put('/api/reminders/:id', async (req, res) => {
 app.get('/clients', async (req, res) => {
   try {
     const { team_id } = req.user;
-    const lastContactSubquery = db('interactions').select('client_id').max('date as last_contact_date').groupBy('client_id').as('last_contacts');
-    const clients = await db('clients')
-      .leftJoin(lastContactSubquery, 'clients.id', 'last_contacts.client_id')
-      .where('clients.team_id', team_id)
-      .select('clients.*', 'last_contacts.last_contact_date')
-      .orderBy('clients.created_at', 'desc');
+    
+    let clients = await Client.find({ team_id }).sort({ createdAt: -1 }).lean();
+            
+    const lastInteractions = await Interaction.aggregate([
+        { $match: { client_id: { $in: clients.map(c => c._id) } } },
+        { $sort: { date: -1 } },
+        { $group: { _id: "$client_id", last_contact_date: { $first: "$date" } } }
+    ]);
+            
+    const interactionMap = new Map(lastInteractions.map(i => [i._id.toString(), i.last_contact_date]));
+            
+    clients.forEach(client => {
+        client.last_contact_date = interactionMap.get(client._id.toString());
+    });
+
     res.status(200).json(clients);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch clients' });
@@ -85,13 +110,11 @@ app.get('/clients', async (req, res) => {
 app.post('/clients', async (req, res) => {
   try {
     const { team_id } = req.user;
-    const { name, contact_email, company, owner, website_url, contact_cadence_days, priority } = req.body;
+    const { name, contact_email } = req.body;
     if (!name || !contact_email) {
       return res.status(400).json({ error: 'Name and contact_email are required' });
     }
-    const [newClient] = await db('clients')
-        .insert({ name, contact_email, company, owner, team_id, website_url, contact_cadence_days, priority, prep_notes: '' })
-        .returning('*');
+    const newClient = await Client.create({ ...req.body, team_id });
     res.status(201).json(newClient);
   } catch (error) {
     res.status(500).json({ error: 'Failed to create client' });
@@ -102,15 +125,14 @@ app.put('/clients/:id', async (req, res) => {
     try {
         const { team_id } = req.user;
         const { id } = req.params;
-        const { name, company, contact_email, owner, tags, website_url, contact_cadence_days, prep_notes, priority, status } = req.body;
-        const updateData = { name, company, contact_email, owner, tags, website_url, contact_cadence_days, prep_notes, priority, status };
 
-        const [updatedClient] = await db('clients')
-            .where({ id: id, team_id: team_id })
-            .update(updateData)
-            .returning('*');
+        const updatedClient = await Client.findOneAndUpdate(
+            { _id: id, team_id: team_id }, 
+            req.body, 
+            { new: true }
+        );
 
-         if (!updatedClient) {
+        if (!updatedClient) {
             return res.status(404).json({ error: 'Client not found or access denied.' });
         }
         res.status(200).json(updatedClient);
@@ -123,8 +145,10 @@ app.delete('/clients/:id', async (req, res) => {
     try {
         const { team_id } = req.user;
         const { id } = req.params;
-        const count = await db('clients').where({ id: id, team_id: team_id }).del();
-        if (count === 0) {
+
+        const result = await Client.findOneAndDelete({ _id: id, team_id: team_id });
+
+        if (!result) {
             return res.status(404).json({ error: 'Client not found or access denied.' });
         }
         res.status(204).send();
@@ -137,16 +161,22 @@ app.get('/clients/:id/interactions', async (req, res) => {
     try {
         const { team_id } = req.user;
         const { id: client_id } = req.params;
-        const client = await db('clients').where({ id: client_id, team_id }).first();
+
+        const client = await Client.findOne({ _id: client_id, team_id });
         if (!client) {
             return res.status(404).json({ error: 'Client not found or access denied.' });
         }
-        const interactions = await db('interactions')
-            .join('users', 'interactions.user_id', 'users.id')
-            .where({ client_id })
-            .select('interactions.*', 'users.email as user_email')
-            .orderBy('date', 'desc');
-        res.status(200).json(interactions);
+
+        const interactions = await Interaction.find({ client_id })
+            .populate('user_id', 'email')
+            .sort({ date: -1 });
+        
+        const response = interactions.map(i => ({
+            ...i.toObject(),
+            user_email: i.user_id.email
+        }));
+
+        res.status(200).json(response);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch interactions' });
     }
@@ -154,27 +184,38 @@ app.get('/clients/:id/interactions', async (req, res) => {
 
 app.post('/clients/:id/interactions', async (req, res) => {
     try {
-        const { team_id, id: user_id, email: user_email } = req.user;
+        const { team_id, id: user_id } = req.user;
         const { id: client_id } = req.params;
         const { type, notes, next_action_date } = req.body;
-        const client = await db('clients').where({ id: client_id, team_id }).first();
+
+        const client = await Client.findOne({ _id: client_id, team_id });
         if (!client) {
             return res.status(404).json({ error: 'Client not found or access denied.' });
         }
         if (!type || !notes) {
             return res.status(400).json({ error: 'Interaction type and notes are required' });
         }
-        const insertData = { client_id, type, notes, user_id };
-        if (next_action_date) {
-            insertData.next_action_date = next_action_date;
-        }
-        const [newInteraction] = await db('interactions').insert(insertData).returning('*');
-        const finalInteraction = { ...newInteraction, user_email };
-        res.status(201).json(finalInteraction);
+
+        const newInteraction = await Interaction.create({ 
+            client_id, 
+            type, 
+            notes, 
+            user_id, 
+            next_action_date 
+        });
+
+        const interactionWithUser = await newInteraction.populate('user_id', 'email');
+        const response = {
+            ...interactionWithUser.toObject(),
+            user_email: interactionWithUser.user_id.email
+        };
+
+        res.status(201).json(response);
     } catch (error) {
         res.status(500).json({ error: 'Failed to create interaction' });
     }
 });
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

@@ -2,7 +2,8 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import db from './db/index.js';
+import Team from '../models/Team.js';
+import User from '../models/User.js';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'default-super-secret-key';
@@ -15,10 +16,10 @@ router.post('/company', async (req, res) => {
 
   try {
     const invite_code = crypto.randomBytes(8).toString('hex');
-    const [newTeam] = await db('teams').insert({ name: team_name, invite_code }).returning('*');
+    const newTeam = await Team.create({ name: team_name, invite_code });
     res.status(201).json(newTeam);
   } catch (error) {
-    if (error.code === '23505') {
+    if (error.code === 11000) {
        return res.status(409).json({ error: 'A company with that name already exists.' });
     }
     res.status(500).json({ error: 'Server error during company registration.' });
@@ -32,7 +33,7 @@ router.post('/register', async (req, res) => {
   }
 
   try {
-    const team = await db('teams').where({ invite_code }).first();
+    const team = await Team.findOne({ invite_code });
     if (!team) {
       return res.status(404).json({ error: 'Invalid invite code.' });
     }
@@ -40,15 +41,16 @@ router.post('/register', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const password_hash = await bcrypt.hash(password, salt);
 
-    const [newUser] = await db('users').insert({
+    const newUser = await User.create({
       email,
       password_hash,
-      team_id: team.id,
-    }).returning(['id', 'email', 'team_id']);
+      team_id: team._id,
+    });
 
-    res.status(201).json({ message: 'User registration successful!', user: newUser });
+    const userResponse = { id: newUser._id, email: newUser.email, team_id: newUser.team_id };
+    res.status(201).json({ message: 'User registration successful!', user: userResponse });
   } catch (error) {
-    if (error.code === '23505') {
+    if (error.code === 11000) {
        return res.status(409).json({ error: 'A user with that email already exists.' });
     }
     res.status(500).json({ error: 'Server error during user registration.' });
@@ -62,7 +64,7 @@ router.post('/login', async (req, res) => {
     }
 
     try {
-        const user = await db('users').where({ email }).first();
+        const user = await User.findOne({ email });
         if (!user) {
             return res.status(401).json({ error: 'Invalid credentials.' });
         }
@@ -72,7 +74,7 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid credentials.' });
         }
 
-        const payload = { user: { id: user.id, email: user.email, team_id: user.team_id } };
+        const payload = { user: { id: user._id, email: user.email, team_id: user.team_id } };
         const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
 
         res.json({ token });
