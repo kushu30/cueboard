@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Container, Title, Text, Button, Card, Stack, Textarea, Select, Group, Paper, Badge, Modal, TextInput, NumberInput, Anchor, MultiSelect, Timeline } from '@mantine/core';
+import { Title, Text, Button, Card, Stack, Textarea, Select, Group, Paper, Badge, Modal, TextInput, NumberInput, Anchor, MultiSelect, Timeline } from '@mantine/core';
 import { IconMail, IconPhone, IconUsers, IconMessageCircle } from '@tabler/icons-react';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import api from './api';
-import type { Client, Interaction, ClientPriority } from './types';
+import type { Client, Interaction } from './types';
 
 const PREMADE_TAGS = ['premium', 'at-risk', 'new-lead', 'renewal-due', 'needs-onboarding'];
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Title, Container, Button, Group, SimpleGrid, Paper, Text, Badge, MultiSelect } from '@mantine/core';
 import type { Client } from './types';
 import { MeetingPrep } from './MeetingPrep';

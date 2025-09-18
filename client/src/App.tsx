@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Modal, TextInput, Stack, Button, NumberInput, Select, Loader, Center, Alert } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useForm } from '@mantine/form';
-import { IconAlertCircle } from '@tabler/icons-react';
 import api from './api';
 import { ClientDetail } from './ClientDetail';
 import { LandingPage } from './LandingPage';

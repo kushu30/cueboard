@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Title, Paper, Group, Textarea, Button, ActionIcon, Autocomplete, Text, Box } from '@mantine/core';
-import { IconMail, IconClipboardList, IconTrash } from '@tabler/icons-react';
+import { Title, Paper, Group, Textarea, Button, Autocomplete, Text, Box } from '@mantine/core';
+import { IconMail, IconClipboardList } from '@tabler/icons-react';
 import api from './api';
 import type { Client } from './types';
 

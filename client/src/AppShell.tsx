@@ -1,5 +1,4 @@
-import { AppShell, Burger, Group, Text, Button, ActionIcon, useMantineColorScheme, Tooltip } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
+import { AppShell, Group, Text, Button, ActionIcon, useMantineColorScheme, Tooltip } from '@mantine/core';
 import { IconSun, IconMoon } from '@tabler/icons-react';
 
 interface MainAppShellProps {
