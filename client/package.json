@@ -4,10 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "start": "node server.js",
+    "build": "npm install && cd client && npm install && npm run build",
+    "dev": "nodemon server.js"
   },
   "dependencies": {
     "@mantine/core": "^8.3.1",
