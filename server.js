@@ -8,10 +8,10 @@ import connectDB from './config/db.js';
 import authRouter from './auth.js';
 import authMiddleware from './middleware/auth.js';
 import { generateReminders } from './reminders.js';
-import Client from './models/Client.js';
-import User from './models/User.js';
-import Interaction from './models/Interaction.js';
-import Reminder from './models/Reminder.js';
+import Client from './models/client.js';
+import User from './models/user.js';
+import Interaction from './models/interaction.js';
+import Reminder from './models/reminder.js';
 
 connectDB();
 

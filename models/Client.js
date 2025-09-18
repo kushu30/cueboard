@@ -23,6 +23,10 @@ const ClientSchema = new mongoose.Schema({
     enum: ['high', 'medium', 'low'],
     default: 'medium',
   },
+  status: {
+    type: String,
+    default: 'active',
+  },
   team_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Team',

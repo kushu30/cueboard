@@ -1,7 +1,7 @@
 import { subDays } from 'date-fns';
-import Client from './models/Client.js';
-import Interaction from './models/Interaction.js';
-import Reminder from './models/Reminder.js';
+import Client from './models/client.js';
+import Interaction from './models/interaction.js';
+import Reminder from './models/reminder.js';
 
 export async function generateReminders() {
   console.log('Running daily cadence check...');
