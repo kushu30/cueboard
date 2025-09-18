@@ -1,18 +1,23 @@
+# Stage 1: Build the React frontend
 FROM node:18-alpine AS builder
-WORKDIR /app/client
-COPY client/package*.json ./
-RUN npm install
-COPY client/ ./
-RUN npm run build
+WORKDIR /app
+COPY client/package*.json ./client/
+COPY client/package-lock.json ./client/
+RUN cd client && npm install
+COPY client/ ./client/
+RUN cd client && npm run build
 
+# Stage 2: Build the final production image
 FROM node:18-alpine
 WORKDIR /app
 COPY package*.json ./
 RUN npm install --omit=dev
 
-COPY --from=builder /app/client/dist ./client/dist
-
+# Copy the rest of the backend source code
 COPY . .
+
+# Copy ONLY the built frontend from the 'builder' stage
+COPY --from=builder /app/client/dist ./client/dist
 
 EXPOSE 3001
 CMD [ "node", "server.js" ]
