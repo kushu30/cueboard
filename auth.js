@@ -2,11 +2,11 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import Team from '../models/team.js';
-import User from '../models/user.js';
+import Team from './models/team.js';
+import User from './models/user.js';
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'default-super-secret-key';
+const JWT_SECRET = process.env.JWT_SECRET
 
 router.post('/company', async (req, res) => {
   const { team_name } = req.body;
