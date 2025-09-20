@@ -56,14 +56,16 @@ function App() {
     } catch (err) { console.error('Failed to add client:', err); }
   };
 
-  const handleUpdateClientInList = (updatedClient: Client) => {
-    setClients(clients.map(c => c.id === updatedClient.id ? updatedClient : c));
-  };
+const handleUpdateClientInList = (updatedClient: Client) => {
+  setClients(prev => prev.map(c => String(c.id ?? (c as any)?._id ?? '') === String(updatedClient.id ?? (updatedClient as any)?._id ?? '') ? updatedClient : c));
+};
 
-  const handleDeleteClient = (clientId: number) => {
-    setClients(clients.filter(c => c.id !== clientId));
-    setSelectedClient(null);
-  };
+
+const handleDeleteClient = (clientId: string | number) => {
+  setClients(prev => prev.filter(c => String(c.id ?? (c as any)?._id ?? '') !== String(clientId)));
+  setSelectedClient(null);
+};
+
   
   if (!token) { 
     return <LandingPage onLoginSuccess={handleLoginSuccess} />; 
