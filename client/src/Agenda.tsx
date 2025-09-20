@@ -1,3 +1,4 @@
+// src/Agenda.tsx
 import { useState, useEffect } from 'react';
 import { Title, Paper, Group, Textarea, Button, Autocomplete, Text, Box } from '@mantine/core';
 import { IconMail, IconClipboardList } from '@tabler/icons-react';
@@ -6,7 +7,7 @@ import type { Client } from './types';
 
 interface AgendaItem {
   id: number;
-  client_id: number;
+  client_id: string | number;
   client_name: string;
   contact_email: string;
   discussion_points: string;
@@ -22,7 +23,7 @@ export function Agenda({ clients, onClientSelect }: AgendaProps) {
 
   const fetchAgenda = () => {
     api.get('/api/agenda')
-      .then(res => setAgendaItems(res.data))
+      .then(res => setAgendaItems(res.data || []))
       .catch(console.error);
   };
 
@@ -30,6 +31,7 @@ export function Agenda({ clients, onClientSelect }: AgendaProps) {
 
   const handleAddClientToAgenda = async (clientId: string) => {
     try {
+      // send client id as provided (string), backend should accept string or numeric id
       await api.post('/api/agenda', { client_id: clientId });
       fetchAgenda();
       setAddClientValue('');
@@ -40,17 +42,20 @@ export function Agenda({ clients, onClientSelect }: AgendaProps) {
     api.put(`/api/agenda/${id}`, { discussion_points: notes }).catch(console.error);
   };
   
-  const handleComplete = (id: number, clientId: number) => {
-      api.put(`/api/agenda/${id}`, { status: 'done' })
-        .then(() => {
-            fetchAgenda();
-            const client = clients.find(c => c.id === clientId);
-            if (client) onClientSelect(client);
-        })
-        .catch(console.error);
+  const handleComplete = (id: number, clientId: string | number) => {
+    api.put(`/api/agenda/${id}`, { status: 'done' })
+      .then(() => {
+        fetchAgenda();
+        const client = clients.find(c => String(c?.id ?? '') === String(clientId));
+        if (client) onClientSelect(client);
+      })
+      .catch(console.error);
   };
 
-  const clientOptions = clients.map(c => ({ value: c.id.toString(), label: c.name }));
+  // safe client options: stringify ids and drop entries without id
+  const clientOptions = clients
+    .map(c => ({ value: String(c?.id ?? ''), label: c?.name ?? '' }))
+    .filter(opt => opt.value !== '');
 
   return (
     <Box mb="xl">
@@ -102,3 +107,5 @@ export function Agenda({ clients, onClientSelect }: AgendaProps) {
     </Box>
   );
 }
+
+export default Agenda;
