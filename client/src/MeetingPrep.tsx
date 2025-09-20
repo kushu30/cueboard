@@ -13,16 +13,20 @@ export function MeetingPrep({ clients, onUpdateClientInList }: PrepProps) {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
-  
-  const selectedClient = clients.find(c => c.id.toString() === selectedClientId);
+  const [autocompleteValue, setAutocompleteValue] = useState(''); // show label in Autocomplete
+
+  // Safe find: compare stringified ids, guard against undefined ids
+  const selectedClient = clients.find(c => String(c?.id) === String(selectedClientId));
 
   const handleSelectClient = (clientId: string) => {
     setSelectedClientId(clientId);
-    const client = clients.find(c => c.id.toString() === clientId);
-    setNotes(client?.prep_notes || '');
+    const client = clients.find(c => String(c?.id) === String(clientId));
+    setNotes(client?.prep_notes ?? '');
     setShowSuccess(false);
+    // set autocomplete label value to client name for UX
+    setAutocompleteValue(client?.name ?? '');
   };
-  
+
   const handleSaveNotes = async () => {
     if (!selectedClient) return;
     try {
@@ -33,7 +37,10 @@ export function MeetingPrep({ clients, onUpdateClientInList }: PrepProps) {
     } catch (error) { console.error(error); }
   };
 
-  const clientOptions = clients.map(c => ({ value: c.id.toString(), label: c.name }));
+  // Build options safely; exclude clients without id (or provide fallback)
+  const clientOptions = clients
+    .map(c => ({ value: String(c?.id ?? ''), label: c?.name ?? '' }))
+    .filter(opt => opt.value !== '');
 
   return (
     <Box mb="xl">
@@ -43,9 +50,22 @@ export function MeetingPrep({ clients, onUpdateClientInList }: PrepProps) {
           label="Select a client to prep for"
           placeholder="Search..."
           data={clientOptions}
-          onOptionSubmit={handleSelectClient}
+          onOptionSubmit={(val) => {
+            // val is the value of the selected option
+            handleSelectClient(val);
+          }}
           limit={5}
           mb="md"
+          // show the selected client's name in the input
+          value={autocompleteValue}
+          onChange={(v) => {
+            setAutocompleteValue(v);
+            // if user cleared input, clear selected client
+            if (!v) {
+              setSelectedClientId(null);
+              setNotes('');
+            }
+          }}
         />
         {selectedClient && (
           <>

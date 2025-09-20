@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Title, Container, Button, Group, SimpleGrid, Paper, Text, Badge, MultiSelect } from '@mantine/core';
+import { Title, Container, Button, Group, SimpleGrid, Paper, Text, Badge } from '@mantine/core';
 import type { Client } from './types';
 import { MeetingPrep } from './MeetingPrep';
 import { PriorityQueue } from './PriorityQueue';
@@ -12,20 +11,6 @@ interface DashboardProps {
 }
 
 export function Dashboard({ clients, onClientSelect, openAddClientModal, onUpdateClientInList }: DashboardProps) {
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-
-  // Create a unique list of all available tags from all clients
-  const allTags = [...new Set(clients.flatMap(c => c.tags ? c.tags.split(',') : []).map(t => t.trim()).filter(Boolean))];
-
-  const processedClients = clients
-    .filter(client => {
-      // If no tags are selected, show all clients
-      if (selectedTags.length === 0) return true;
-      const clientTags = client.tags ? client.tags.split(',').map(t => t.trim()) : [];
-      // Show client if they have ALL of the selected tags
-      return selectedTags.every(tag => clientTags.includes(tag));
-    });
-  
   return (
     <Container>
       <Group justify="space-between" mb="xl">
@@ -37,22 +22,14 @@ export function Dashboard({ clients, onClientSelect, openAddClientModal, onUpdat
       
       <MeetingPrep clients={clients} onUpdateClientInList={onUpdateClientInList} />
 
-      <Title order={2} size="h3" mt="xl" mb="md">All Clients ({processedClients.length})</Title>
-      <MultiSelect
-          placeholder="Filter by tags..."
-          data={allTags}
-          value={selectedTags}
-          onChange={setSelectedTags}
-          clearable
-          mb="xl"
-        />
-
+      <Title order={2} size="h3" mt="xl" mb="md">All Clients ({clients.length})</Title>
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-        {processedClients.map(client => {
+        {clients.map((client, idx) => {
+            const idKey = client.id ?? `client-fallback-${idx}`;
             const tags = client.tags ? client.tags.split(',').map(t => t.trim()).filter(t => t) : [];
             return (
                 <Paper 
-                    key={client.id} 
+                    key={idKey}
                     withBorder 
                     p="md" 
                     radius="md" 
@@ -67,14 +44,13 @@ export function Dashboard({ clients, onClientSelect, openAddClientModal, onUpdat
                     <Text size="sm" c="dimmed">{client.company}</Text>
                     {tags.length > 0 && (
                         <Group gap={4} mt="sm">
-                            {tags.map(tag => <Badge key={tag} size="sm" variant="outline">{tag}</Badge>)}
+                            {tags.map((tag, tagIdx) => <Badge key={`${idKey}-tag-${tagIdx}`} size="sm" variant="outline">{tag}</Badge>)}
                         </Group>
                     )}
                 </Paper>
             )
         })}
       </SimpleGrid>
-      {processedClients.length === 0 && <Text c="dimmed" mt="md">No clients match your filters.</Text>}
     </Container>
   );
 }
